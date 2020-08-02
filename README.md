@@ -4,13 +4,11 @@ for macOS.
 ScreenshotImporter is a command line tool to import your screenshots to Photos.app
 
 -- -- -- 
-
-<center>
+  
 ### ⚠️ Work in progress.
 Unstable version.
 
 The project *_should_* work, but is at this moment _untested_.
-</center>
 
 -- -- -- 
 
