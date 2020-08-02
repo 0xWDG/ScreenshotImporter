@@ -75,7 +75,7 @@ let desktopPath = (
 
 /// Settings of the application
 var Settings: SettingsJSON = SettingsJSON.init(
-    checkPath: desktopPath + "/screenshots",
+    checkPath: desktopPath + "/Screenshots",
     deleteAfterImport: true,
     allowedExtensions: [
         "jpg",
