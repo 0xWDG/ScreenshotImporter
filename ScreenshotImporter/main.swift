@@ -38,7 +38,6 @@ public class Run {
         }
     }
 }
-print("Loading...")
 
 // MARK: - Settings JSON Codable
 struct SettingsJSON: Codable {
@@ -101,7 +100,7 @@ var Settings: SettingsJSON = SettingsJSON.init(
         "pdf"
     ],
     checkPath: desktopPath + "/Screenshots",
-    debug: true,
+    debug: false,
     deleteAfterImport: true
 )
 
@@ -251,6 +250,10 @@ func readSettings() {
                 SettingsJSON.self,
                 from: jsonData
             )
+            
+            if Settings.debug {
+                print("Loaded settigs from \(settingsURLString)")
+            }
         }
         catch {
             dialog(
@@ -260,7 +263,6 @@ func readSettings() {
             )
         }
     } else {
-        
         do {
             let question = dialog(
                 notificationType: .question,
@@ -318,10 +320,20 @@ func gotPermission() {
         if Settings.debug {
             print(".restricted")
         }
+        PHPhotoLibrary.requestAuthorization { (status) in
+            if Settings.debug {
+                print("Status: \(status.rawValue)")
+            }
+        }
         
     case .denied:
         if Settings.debug {
             print(".denied")
+        }
+        PHPhotoLibrary.requestAuthorization { (status) in
+            if Settings.debug {
+                print("Status: \(status.rawValue)")
+            }
         }
         
     case .authorized:
@@ -332,6 +344,11 @@ func gotPermission() {
     @unknown default:
         if Settings.debug {
             print("Unexpected permission.")
+        }
+        PHPhotoLibrary.requestAuthorization { (status) in
+            if Settings.debug {
+                print("Status: \(status.rawValue)")
+            }
         }
     }
 }
@@ -415,9 +432,8 @@ func installScreenshotImporter() {
 }
 
 func installLaunchDeamon() {
-    //~/Library/LaunchAgents/com.wdgwv.Screenshots.plist
-    
     if !FileManager.default.fileExists(atPath: deamonPath) {
+        // We cannot run this file direclty because the Photos.app permissions which are needed.
         let newPlist = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
             + "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\r\n"
             + "<plist version=\"1.0\">\r\n"
@@ -426,6 +442,10 @@ func installLaunchDeamon() {
             + "     <string>com.wdgwv.ScreenshotImporter</string>\r\n"
             + "     <key>ProgramArguments</key>\r\n"
             + "     <array>\r\n"
+            + "         <string>/usr/bin/open</string>"
+            + "         <string>-F</string>"
+            + "         <string>-j</string>"
+            + "         <string>-g</string>"
             + "         <string>\(Settings.checkPath)/ScreenshotImporter</string>\r\n"
             + "     </array>\r\n"
             + "     <key>RunAtLoad</key>\r\n"
@@ -457,6 +477,7 @@ func installLaunchDeamon() {
     shell("chmod 600 \"\(deamonPath)\"")
     shell("launchctl load \"\(deamonPath)\"")
     shell("launchctl start \"\(deamonPath)\"")
+    shell("defaults write com.apple.screencapture location ~/Desktop/Screenshots")
 }
 
 // MARK: - Create directory
