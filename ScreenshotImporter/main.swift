@@ -42,9 +42,12 @@ print("Loading...")
 
 // MARK: - Settings JSON Codable
 struct SettingsJSON: Codable {
-    var checkPath: String
-    var deleteAfterImport: Bool
+    var addScreenshotEXIF: Bool
+    var albumName: String
     var allowedExtensions: [String]
+    var checkPath: String
+    var debug: Bool
+    var deleteAfterImport: Bool
 }
 
 // MARK: - Variables
@@ -75,8 +78,8 @@ let desktopPath = (
 
 /// Settings of the application
 var Settings: SettingsJSON = SettingsJSON.init(
-    checkPath: desktopPath + "/Screenshots",
-    deleteAfterImport: true,
+    addScreenshotEXIF: true,
+    albumName: "Screenshots",
     allowedExtensions: [
         "jpg",
         "jpeg",
@@ -85,7 +88,10 @@ var Settings: SettingsJSON = SettingsJSON.init(
         "tiff",
         "bmp",
         "pdf"
-    ]
+    ],
+    checkPath: desktopPath + "/Screenshots",
+    debug: true,
+    deleteAfterImport: true
 )
 
 /// Can the program exit already?
@@ -97,6 +103,9 @@ var fileList: [URL]?
 /// Current image
 var image: NSImage?
 
+/// Current asset collection
+var assetCollection: PHAssetCollection!
+
 // MARK: - Alert box
 
 /// Which notification types are available
@@ -106,7 +115,6 @@ enum notificationType {
     case question, note, notice
     case appicon, `default`
 }
-
 
 /// Display a dialog box
 /// - Parameters:
@@ -213,10 +221,12 @@ func readSettings() {
             let jsonEncoder = JSONEncoder()
             jsonEncoder.outputFormatting = .prettyPrinted
             let jsonData = try jsonEncoder.encode(Settings)
-            #if DEBUG
-            let jsonString = String(data: jsonData, encoding: .utf8)!
-            print(jsonString)
-            #endif
+            
+            if Settings.debug {
+                let jsonString = String(data: jsonData, encoding: .utf8)!
+                print(jsonString)
+            }
+            
             do {
                 try jsonData.write(to: settingsURL)
             }
@@ -238,23 +248,95 @@ func readSettings() {
 func gotPermission() {
     switch PHPhotoLibrary.authorizationStatus() {
     case .notDetermined:
-        print(".notDetermined")
+        if Settings.debug {
+            print(".notDetermined")
+        }
         PHPhotoLibrary.requestAuthorization { (status) in
-            print("Status: \(status.rawValue)")
+            if Settings.debug {
+                print("Status: \(status.rawValue)")
+            }
         }
         
     case .restricted:
-        print(".restricted")
+        if Settings.debug {
+            print(".restricted")
+        }
         
     case .denied:
-        print(".denied")
+        if Settings.debug {
+            print(".denied")
+        }
         
     case .authorized:
-        print(".authorized")
+        if Settings.debug {
+            print(".authorized")
+        }
         
     @unknown default:
-        print("?")
+        if Settings.debug {
+            print("Unexpected permission.")
+        }
     }
+}
+
+
+func createAlbumIfNeeded() {
+    if let unwrappedAssetCollection = fetchAssetCollectionForAlbum() {
+        // Album already exists
+        assetCollection = unwrappedAssetCollection
+        return
+    }
+    
+    PHPhotoLibrary.shared().performChanges({
+        if Settings.debug {
+            print("Creating album request...")
+        }
+        
+        PHAssetCollectionChangeRequest.creationRequestForAssetCollection(
+            withTitle: Settings.albumName
+        )
+    }) { success, error in
+        if Settings.debug {
+            print("There sould be a return value...")
+        }
+        
+        if success {
+            if Settings.debug {
+                print("The album should be created...")
+            }
+            
+            assetCollection = fetchAssetCollectionForAlbum()
+            
+        } else {
+            if Settings.debug {
+                print("Error \(error?.localizedDescription ?? "Unknown error")")
+            }
+        }
+    }
+    
+    if Settings.debug {
+        print("Finished album request...")
+    }
+}
+
+func fetchAssetCollectionForAlbum() -> PHAssetCollection? {
+    let fetchOptions = PHFetchOptions()
+    fetchOptions.predicate = NSPredicate(
+        format: "title = %@",
+        Settings.albumName
+    )
+    
+    let collection = PHAssetCollection.fetchAssetCollections(
+        with: .album,
+        subtype: .any,
+        options: fetchOptions
+    )
+    
+    if let _: AnyObject = collection.firstObject {
+        return collection.firstObject
+    }
+    
+    return nil
 }
 
 // MARK: - Read directory
@@ -284,6 +366,7 @@ func readDirectory() {
     print(fileList)
 }
 
+// MARK: - Import the photo
 func importFile(atURL: URL) {
     image = nil
     
@@ -315,7 +398,23 @@ func importFile(atURL: URL) {
     
     
     PHPhotoLibrary.shared().performChanges({
-        PHAssetChangeRequest.creationRequestForAsset(from: image)
+        guard let assetCollection = assetCollection else {
+            dialog(notificationType: .fatalError, title: "screenshotImporter", message: "There is no asset collection available, cannot continue.")
+            return
+        }
+        let assetChangeRequest = PHAssetChangeRequest.creationRequestForAsset(
+            from: image
+        )
+        
+        let assetPlaceHolder = assetChangeRequest.placeholderForCreatedAsset
+        
+        let albumChangeRequest = PHAssetCollectionChangeRequest(
+            for: assetCollection
+        )
+        
+        let enumeration: NSArray = [assetPlaceHolder!]
+        
+        albumChangeRequest!.addAssets(enumeration)
     }) { (suceed, error) in
         if let error = error {
             dialog(
@@ -363,6 +462,8 @@ Run {
     readSettings()
 }.then {
     gotPermission()
+}.then {
+    createAlbumIfNeeded()
 }.then {
     readDirectory()
 }
