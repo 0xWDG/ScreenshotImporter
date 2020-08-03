@@ -51,22 +51,6 @@ struct SettingsJSON: Codable {
 }
 
 // MARK: - Variables
-/// Program arguments
-let arguments = CommandLine.arguments
-
-/// Executable path
-let executablePath = Bundle.main.bundlePath
-
-/// Info.plist URL String
-let infoPlistURLString = "\(executablePath)/Info.plist"
-
-
-/// Settings.json URL String
-let settingsURLString = "file://\(executablePath)/Settings.json"
-
-/// Settings.json URL
-let settingsURL = URL(string: settingsURLString)!
-
 /// Desktop Path
 let desktopPath = (
     NSSearchPathForDirectoriesInDomains(
@@ -75,6 +59,33 @@ let desktopPath = (
         true
         ) as [String]
     ).first!
+
+/// Library path
+let libraryPath = (
+    NSSearchPathForDirectoriesInDomains(
+        .libraryDirectory,
+        .userDomainMask,
+        true
+        ) as [String]
+    ).first!
+
+/// Program arguments
+let arguments = CommandLine.arguments
+
+/// Executable path
+let executablePath = Bundle.main.bundlePath
+
+/// Executable path (URL)
+let executableURL = Bundle.main.bundleURL.appendingPathComponent("ScreenshotImporter")
+
+/// Settings.json URL String
+let settingsURLString = "\(executablePath)/Settings.json"
+
+/// Settings.json URL
+let settingsURL = URL(string: "file://\(settingsURLString)")!
+
+/// Deamon path
+let deamonPath = "\(libraryPath)/LaunchAgents/com.wdgwv.ScreenshotImporter.plist"
 
 /// Settings of the application
 var Settings: SettingsJSON = SettingsJSON.init(
@@ -189,6 +200,46 @@ enum notificationType {
     return responseFlags == 0
 }
 
+@discardableResult
+func shell(_ command: String) -> (output: String, error: String) {
+    if Settings.debug {
+        print("Running command '\(command)'")
+    }
+    let task = Process()
+    let outputPipe = Pipe()
+    let errorPipe = Pipe()
+    
+    task.standardOutput = outputPipe
+    task.standardError = errorPipe
+    
+    task.arguments = ["-c", command]
+    task.launchPath = "/bin/bash"
+    task.launch()
+    
+    let output = String(
+        data: outputPipe.fileHandleForReading.readDataToEndOfFile(),
+        encoding: .utf8
+        )!
+    
+    let error = String(
+        data: errorPipe.fileHandleForReading.readDataToEndOfFile(),
+        encoding: .utf8
+        )!
+    
+    if Settings.debug {
+        if !output.isEmpty {
+            print("Return value: \(output)")
+        }
+        #if DEBUG
+        if !error.isEmpty {
+            print("Error value: \(error)")
+        }
+        #endif
+    }
+    
+    return (output, error)
+}
+
 // MARK: - Read settings
 func readSettings() {
     if FileManager.default.fileExists(atPath: settingsURLString) {
@@ -208,39 +259,45 @@ func readSettings() {
                 message: "Could not parse \"settings.json\", using default settings"
             )
         }
-    }
-    
-    do {
-        let question = dialog(
-            notificationType: .question,
-            title: "ScreenshotImporter",
-            message: "Do you want to generate a \"settings.json\", using default settings, so that you can customize it?"
-        )
+    } else {
         
-        if question {
-            let jsonEncoder = JSONEncoder()
-            jsonEncoder.outputFormatting = .prettyPrinted
-            let jsonData = try jsonEncoder.encode(Settings)
+        do {
+            let question = dialog(
+                notificationType: .question,
+                title: "ScreenshotImporter",
+                message: "Do you want to generate a \"settings.json\", using default settings, so that you can customize it?"
+            )
             
-            if Settings.debug {
-                let jsonString = String(data: jsonData, encoding: .utf8)!
-                print(jsonString)
-            }
-            
-            do {
-                try jsonData.write(to: settingsURL)
-            }
-            catch {
-                dialog(
-                    notificationType: .notice,
-                    title: "ScreenshotImporter",
-                    message: "Failed to write default settings\n\(error.localizedDescription)"
-                )
+            if question {
+                let jsonEncoder = JSONEncoder()
+                jsonEncoder.outputFormatting = .prettyPrinted
+                let jsonData = try jsonEncoder.encode(Settings)
+                
+                if Settings.debug {
+                    let jsonString = String(data: jsonData, encoding: .utf8)!
+                    print(jsonString)
+                }
+                
+                do {
+                    try jsonData.write(to: settingsURL)
+                    try jsonData.write(
+                        to: URL(
+                            string: "file://\(Settings.checkPath)/Settings.json"
+                            )!
+                    )
+                }
+                catch {
+                    dialog(
+                        notificationType: .notice,
+                        title: "ScreenshotImporter",
+                        message: "Failed to write default settings\n\(error.localizedDescription)"
+                    )
+                }
             }
         }
-    }
-    catch {
-        print(error)
+        catch {
+            print(error)
+        }
     }
 }
 
@@ -339,6 +396,96 @@ func fetchAssetCollectionForAlbum() -> PHAssetCollection? {
     return nil
 }
 
+func installScreenshotImporter() {
+    if !FileManager.default.fileExists(atPath: "\(Settings.checkPath)/ScreenshotImporter") {
+        do {
+            try FileManager.default.copyItem(
+                at: executableURL,
+                to: URL(string: "file://\(Settings.checkPath)/ScreenshotImporter")!
+            )
+        }
+        catch {
+            print("Failed to copy")
+            print("From: \(executableURL.absoluteString)")
+            print("To: \(URL(string: "\(Settings.checkPath)/ScreenshotImporter")!.absoluteString)")
+        }
+        
+    }
+    shell("chmod +x \"\(Settings.checkPath)/ScreenshotImporter\"")
+}
+
+func installLaunchDeamon() {
+    //~/Library/LaunchAgents/com.wdgwv.Screenshots.plist
+    
+    if !FileManager.default.fileExists(atPath: deamonPath) {
+        let newPlist = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+            + "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\r\n"
+            + "<plist version=\"1.0\">\r\n"
+            + "  <dict>\r\n"
+            + "     <key>Label</key>\r\n"
+            + "     <string>com.wdgwv.ScreenshotImporter</string>\r\n"
+            + "     <key>ProgramArguments</key>\r\n"
+            + "     <array>\r\n"
+            + "         <string>\(Settings.checkPath)/ScreenshotImporter</string>\r\n"
+            + "     </array>\r\n"
+            + "     <key>RunAtLoad</key>\r\n"
+            + "     <true />\r\n"
+            + "     <key>StartInterval</key>\r\n"
+            + "     <integer>30</integer>\r\n"
+            + "     <key>StandardErrorPath</key>\r\n"
+            + "     <string>/Users/wes/Desktop/Screenshots/Error.txt</string>\r\n"
+            + "     <key>StandardOutPath</key>\r\n"
+            + "     <string>/Users/wes/Desktop/Screenshots/Stdout.txt</string>\r\n"
+            + "  </dict>\r\n"
+            + "</plist>"
+        
+        do {
+            try newPlist.data(using: .utf8)?.write(
+                to: URL(string: "file://\(deamonPath)")!
+            )
+        }
+        catch {
+            dialog(
+                notificationType: .fatalError,
+                title: "ScreenshotImporter",
+                message: "Could not write launch deamon\nURL: \(deamonPath)\nError: \(error.localizedDescription)"
+            )
+        }
+    }
+    
+    // Run command to register
+    shell("chmod 600 \"\(deamonPath)\"")
+    shell("launchctl load \"\(deamonPath)\"")
+    shell("launchctl start \"\(deamonPath)\"")
+}
+
+// MARK: - Create directory
+func createDirectoryIfNeeded() {
+    if !FileManager.default.fileExists(atPath: Settings.checkPath) {
+        do {
+            try FileManager.default.createDirectory(
+                atPath: Settings.checkPath,
+                withIntermediateDirectories: true,
+                attributes: [FileAttributeKey.extensionHidden: true]
+            )
+        }
+        catch {
+            dialog(
+                notificationType: .fatalError,
+                title: "ScreenshotImporter",
+                message: "Cannot create directory at \"\(Settings.checkPath)\" please create the directory"
+            )
+            
+            exit(4)
+        }
+    } else {
+        try? FileManager.default.setAttributes(
+            [FileAttributeKey.extensionHidden: true],
+            ofItemAtPath: Settings.checkPath
+        )
+    }
+}
+
 // MARK: - Read directory
 func readDirectory() {
     fileList = try? FileManager.default.contentsOfDirectory(
@@ -357,13 +504,16 @@ func readDirectory() {
     }
     
     for item in fileList {
-        print("file: \(item.lastPathComponent) = \(item.pathExtension), \(Settings.allowedExtensions.contains(item.pathExtension) ? "Import" : "Ignore")")
+        #if DEBUG
+        if Settings.debug {
+            print("file: \(item.lastPathComponent) = \(item.pathExtension), \(Settings.allowedExtensions.contains(item.pathExtension) ? "Import" : "Ignore")")
+        }
+        #endif
         
         if Settings.allowedExtensions.contains(item.pathExtension) {
             importFile(atURL: item)
         }
     }
-    print(fileList)
 }
 
 // MARK: - Import the photo
@@ -399,7 +549,12 @@ func importFile(atURL: URL) {
     
     PHPhotoLibrary.shared().performChanges({
         guard let assetCollection = assetCollection else {
-            dialog(notificationType: .fatalError, title: "screenshotImporter", message: "There is no asset collection available, cannot continue.")
+            dialog(
+                notificationType: .fatalError,
+                title: "ScreenshotImporter",
+                message: "There is no asset collection available, cannot continue."
+            )
+            
             return
         }
         let assetChangeRequest = PHAssetChangeRequest.creationRequestForAsset(
@@ -464,6 +619,11 @@ Run {
     gotPermission()
 }.then {
     createAlbumIfNeeded()
+}.then {
+    createDirectoryIfNeeded()
+}.then {
+    installScreenshotImporter()
+    installLaunchDeamon()
 }.then {
     readDirectory()
 }

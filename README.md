@@ -8,17 +8,17 @@ ScreenshotImporter is a command line tool to import your screenshots to Photos.a
 ### ⚠️ Work in progress.
 Unstable version.
 
-The project *_should_* work, but is at this moment _untested_.
+The project works, but is at this moment _in development_.
 
 -- -- -- 
 
 ## Installation
 1. go to releases and download the latest release  
 (optional: clone this repo and build the project)
-2. create `~/Desktop/Screenshots`
-3. install the ScreenshotImporter binary in `~/Desktop/screenshots` (will prompt for automatic placement in future)
-4. set the output location of your screenshots to `~/Desktop/Screenshots` using `defaults write com.apple.screencapture location ~/Desktop/Screenshots` 
-5. We'll install a launchDeamon to check for new screenshots
-6. Hide the folder `~/Desktop/Screenshots` using `chflags hidden ~/Desktop/Screenshots` (will be a prompt)
+2. Run this app, and create a screenshot.
 
-Steps 2 to 6, will be automated for you.
+## Automatic tasks (in the future)
+- [x] create a hidden folder `~/Desktop/Screenshots`
+- [ ] install the ScreenshotImporter binary in `~/Desktop/screenshots`
+- [ ] set the output location of your screenshots to `~/Desktop/Screenshots` using `defaults write com.apple.screencapture location ~/Desktop/Screenshots` 
+- [ ] We'll install a launchDeamon to check for new screenshots
