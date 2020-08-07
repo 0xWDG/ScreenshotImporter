@@ -453,9 +453,9 @@ func installLaunchDeamon() {
             + "     <key>StartInterval</key>\r\n"
             + "     <integer>30</integer>\r\n"
             + "     <key>StandardErrorPath</key>\r\n"
-            + "     <string>/Users/wes/Desktop/Screenshots/Error.txt</string>\r\n"
+            + "     <string>\(Settings.checkPath)/Error.txt</string>\r\n"
             + "     <key>StandardOutPath</key>\r\n"
-            + "     <string>/Users/wes/Desktop/Screenshots/Stdout.txt</string>\r\n"
+            + "     <string>\(Settings.checkPath)/Stdout.txt</string>\r\n"
             + "  </dict>\r\n"
             + "</plist>"
         
@@ -538,6 +538,9 @@ func readDirectory() {
 }
 
 // MARK: - Import the photo
+
+/// Import photo to Photos.app
+/// - Parameter atURL: the photo URL
 func importFile(atURL: URL) {
     image = nil
     
@@ -567,6 +570,9 @@ func importFile(atURL: URL) {
         return
     }
     
+    if Settings.addScreenshotEXIF {
+        // TODO: Add screenshot EXIF (like iOS does with their screenshots)
+    }
     
     PHPhotoLibrary.shared().performChanges({
         guard let assetCollection = assetCollection else {
@@ -644,6 +650,7 @@ Run {
     createDirectoryIfNeeded()
 }.then {
     installScreenshotImporter()
+}.then {
     installLaunchDeamon()
 }.then {
     readDirectory()
