@@ -617,10 +617,6 @@ func importFile(atURL: URL) {
         return
     }
     
-    if Settings.addScreenshotEXIF {
-        // TODO: Add screenshot EXIF (like iOS does with their screenshots)
-    }
-    
     PHPhotoLibrary.shared().performChanges({
         guard let assetCollection = assetCollection else {
             dialog(
