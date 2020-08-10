@@ -537,6 +537,45 @@ func readDirectory() {
     }
 }
 
+// MARK: - Edit EXIF to "Screenshot"
+func updateEXIF(inputImageData: Data) -> Data {
+    let ImagePropertyExifDictionary = kCGImagePropertyExifDictionary as String
+    
+    // Read source and get properties
+    guard let sourceRef = CGImageSourceCreateWithData(inputImageData as CFData, nil) else {
+        return inputImageData
+    }
+    
+    guard var metadata = CGImageSourceCopyPropertiesAtIndex(sourceRef, 0, nil) as? [String: Any] else {
+        return inputImageData
+    }
+    
+    // Modify EXIF Screenshot property
+    guard var exif = metadata[ImagePropertyExifDictionary] as? [String: Any] else {
+        return inputImageData
+    }
+    
+    exif[kCGImagePropertyExifUserComment as String] = "Screenshot"
+    metadata[ImagePropertyExifDictionary] = exif as CFDictionary
+    
+    // Set up destination
+    let dData: CFMutableData = NSMutableData()
+    
+    guard let destinationRef = CGImageDestinationCreateWithData(dData, kUTTypePNG, 1, nil) else {
+        return inputImageData
+    }
+    
+    // Add image from source to destination with new properties
+    CGImageDestinationAddImageFromSource(destinationRef, sourceRef, 0, metadata as CFDictionary)
+    
+    // Save destination
+    guard CGImageDestinationFinalize(destinationRef) else {
+        return inputImageData
+    }
+    
+    return dData as Data
+}
+
 // MARK: - Import the photo
 
 /// Import photo to Photos.app
@@ -550,7 +589,10 @@ func importFile(atURL: URL) {
             options: .mappedIfSafe
         )
         
-        image = NSImage(data: imageData)!
+        // Update EXIF Image data.
+        let updatedImageData = updateEXIF(inputImageData: imageData)
+        
+        image = NSImage(data: updatedImageData)!
     }
     catch {
         dialog(
@@ -584,6 +626,7 @@ func importFile(atURL: URL) {
             
             return
         }
+        
         let assetChangeRequest = PHAssetChangeRequest.creationRequestForAsset(
             from: image
         )
