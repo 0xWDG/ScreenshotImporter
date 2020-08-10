@@ -56,8 +56,8 @@ let desktopPath = (
         .desktopDirectory,
         .userDomainMask,
         true
-        ) as [String]
-    ).first!
+    ) as [String]
+).first!
 
 /// Library path
 let libraryPath = (
@@ -65,8 +65,8 @@ let libraryPath = (
         .libraryDirectory,
         .userDomainMask,
         true
-        ) as [String]
-    ).first!
+    ) as [String]
+).first!
 
 /// Program arguments
 let arguments = CommandLine.arguments
@@ -218,12 +218,12 @@ func shell(_ command: String) -> (output: String, error: String) {
     let output = String(
         data: outputPipe.fileHandleForReading.readDataToEndOfFile(),
         encoding: .utf8
-        )!
+    )!
     
     let error = String(
         data: errorPipe.fileHandleForReading.readDataToEndOfFile(),
         encoding: .utf8
-        )!
+    )!
     
     if Settings.debug {
         if !output.isEmpty {
@@ -285,7 +285,7 @@ func readSettings() {
                     try jsonData.write(
                         to: URL(
                             string: "file://\(Settings.checkPath)/Settings.json"
-                            )!
+                        )!
                     )
                 }
                 catch {
@@ -590,7 +590,12 @@ func importFile(atURL: URL) {
         )
         
         // Update EXIF Image data.
-        let updatedImageData = updateEXIF(inputImageData: imageData)
+        var updatedImageData = imageData
+        
+        if Settings.addScreenshotEXIF {
+            // Add the missing EXIF data.
+            updatedImageData = updateEXIF(inputImageData: imageData)
+        }
         
         image = NSImage(data: updatedImageData)!
     }
